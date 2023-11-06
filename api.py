@@ -18,8 +18,8 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest"
 }
 PASSWORD_CORRECT_MESSAGE = 'authType'
-CLOSED_ACCOUNT_MESSAGE = 'This Apple ID has been locked for security reasons.'
-PASSWORD_INCORRECT_MESSAGE = 'Your Apple ID or password was incorrect.'
+PASSWORD_INCORRECT_MESSAGE = 'incorrect'
+CLOSED_ACCOUNT_MESSAGE = 'locked'
 
 # Lock for thread safety
 lock = Lock()
