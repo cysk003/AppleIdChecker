@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apple ID Verification System</title>
+    <link rel="stylesheet" href="static/styles.css"> <!-- Link to your CSS file -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.0.0/flowbite.min.css" rel="stylesheet" />
+</head>
+
+<body class="bg-gray-100 dark:bg-gray-900"> <!-- Set background color -->
+
+    <div class="flex flex-col min-h-screen justify-center items-center py-12">
+        <!-- Centered content vertically and horizontally -->
+
+
+
+
+        <!-- User Verification Module -->
+        <section id="user-verification"
+            class="container mx-auto mb-10 p-6 bg-white rounded-lg shadow-md dark:bg-gray-800">
+            <!-- Centered container with spacing and shadow -->
+            <h2 class="text-center text-2xl font-bold mb-6">单个检测模块</h2> <!-- Centered heading -->
+            <form class="flex flex-col items-center">
+                <div class="mb-6 w-full max-w-lg">
+                    <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Apple
+                        ID</label>
+                    <input type="text" id="apple_id"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                        placeholder="Enter Apple ID" required>
+                </div>
+                <div class="mb-6 w-full max-w-lg">
+                    <label for="password"
+                        class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Password</label>
+                    <input type="password" id="password"
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                        placeholder="Enter Password" required>
+                </div>
+                <div class="w-full max-w-lg">
+                    <button type="submit"
+                        class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">检测</button>
+                </div>
+            </form>
+            <div id="verification-result"></div>
+        </section>
+
+
+        <!-- File Upload Module -->
+        <section id="file-upload" class="container mx-auto mb-10 p-6 bg-white rounded-lg shadow-md dark:bg-gray-800">
+            <h2 class="text-center text-2xl font-bold mb-6">文件上传</h2>
+
+            <!-- Input container -->
+            <div class="mb-6 w-full max-w-lg mx-auto">
+                <input
+                    class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-400 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400"
+                    aria-describedby="user_avatar_help" id="file" type="file" hidden>
+                <div class="flex p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-gray-800 dark:text-blue-400"
+                    role="alert">
+                    <svg class="flex-shrink-0 inline w-4 h-4 mr-3 mt-[2px]" aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                            d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5ZM9.5 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 15H8a1 1 0 0 1 0-2h1v-3H8a1 1 0 0 1 0-2h2a1 1 0 0 1 1 1v4h1a1 1 0 0 1 0 2Z" />
+                    </svg>
+                    <span class="sr-only">Info</span>
+                    <div>
+                        <span class="font-medium">请确保上次的文件满足以下要求:</span>
+                        <ul class="mt-1.5 ml-4 list-disc list-inside">
+                            <li>每行一条数据（不能存在空行）</li>
+                            <li>数据格式为：appleid:password</li>
+                            <li>仅支持文件类型：txt</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Button container -->
+            <div class="w-full max-w-lg mx-auto">
+                <button type="button" onclick="uploadFile()"
+                    class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">上传并解析</button>
+            </div>
+
+            <div id="upload-result"></div>
+        </section>
+
+
+        <!-- Results Display Table Module -->
+        <section id="results-table" class="container mx-auto mb-10 p-6 bg-white rounded-lg shadow-md dark:bg-gray-800">
+            <h2 class="text-center text-2xl font-bold mb-6">批量检测模块</h2>
+
+            <!-- Progress Bar Container -->
+            <div class="w-full max-w-lg mx-auto mb-4">
+                <div id="progress-container" class="w-full bg-gray-200 rounded-full dark:bg-gray-700">
+                    <div id="progress-bar"
+                        class="bg-blue-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full"
+                        style="width: 0%; height: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Batch Verification Button -->
+            <div class="w-full max-w-lg mx-auto text-center">
+                <button type="button" onclick="batchVerify()"
+                    class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">开始批量检测</button>
+            </div>
+
+            <!-- Results Table -->
+            <div class="relative overflow-x-auto mt-6">
+                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">
+                                序号
+                            </th>
+                            <th scope="col" class="px-6 py-3">
+                                Apple ID
+                            </th>
+                            <th scope="col" class="px-6 py-3">
+                                Password
+                            </th>
+                            <th scope="col" class="px-6 py-3">
+                                帐号状态
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <!-- Results will be added here dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+
+        <script src="static/script.js"></script> <!-- Link to your JavaScript file -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.0.0/flowbite.min.js"></script>
+
+</body>
+
+</html>

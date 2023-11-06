@@ -1,5 +1,4 @@
-# apple_id_checker.py
-
+# coding: utf-8
 import requests
 from threading import Lock
 from time import sleep
@@ -20,8 +19,8 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest"
 }
 PASSWORD_CORRECT_MESSAGE = 'authType'
-CLOSED_ACCOUNT_MESSAGE = 'This Apple ID has been locked for security reasons.'
-PASSWORD_INCORRECT_MESSAGE = 'Your Apple ID or password was incorrect.'
+PASSWORD_INCORRECT_MESSAGE = 'incorrect'
+CLOSED_ACCOUNT_MESSAGE = 'locked'
 
 # Lock for thread safety
 lock = Lock()
@@ -42,13 +41,16 @@ class AppleIDChecker:
     def process_response(self, apple_id, password, response_text):
         if PASSWORD_CORRECT_MESSAGE in response_text:
             logger.info(f'密码正确 AppleID -> {apple_id}:{password}')
-            return {"message": "帐号密码正确。"}
+            result = {"status": "密码正确", "message": "帐号密码正确。"}
         elif PASSWORD_INCORRECT_MESSAGE in response_text:
             logger.info(f'密码错误 AppleID -> {apple_id}:{password}')
-            return {"message": "帐号密码错误。"}
+            result = {"status": "密码错误", "message": "帐号密码错误。"}
         elif CLOSED_ACCOUNT_MESSAGE in response_text:
             logger.info(f'账户已锁定 AppleID -> {apple_id}:{password}')
-            return {"message": "该Apple ID因安全原因已被锁定。"}
+            result = {"status": "帐号被锁", "message": "此Apple ID因安全原因已被锁定。"}
         else:
-            logger.error(f'错误-> {apple_id}:{password}')
-            return {"error": "发生未知错误。"}
+            logger.error(f'错误 AppleID -> {apple_id}:{password}')
+            logger.error(f'错误信息 -> {response_text}')
+            result = {"status": "未知错误", "message": "出现未知错误。"}
+
+        return result
