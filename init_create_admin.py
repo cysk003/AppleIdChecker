@@ -22,6 +22,8 @@ def create_admin_user(username, password):
     print(f"Admin user '{username}' created successfully.")
 
 if __name__ == "__main__":
-    admin_username = input("Enter admin username: ")
-    admin_password = input("Enter admin password: ")
+    # admin_username = input("Enter admin username: ")
+    # admin_password = input("Enter admin password: ")
+    admin_username = "admin"
+    admin_password = "adpasswd"
     create_admin_user(admin_username, admin_password)
