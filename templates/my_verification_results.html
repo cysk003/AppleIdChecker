@@ -52,10 +52,26 @@
     <div class="flex flex-col min-h-screen justify-center items-center py-12">
         <!-- Centered content vertically and horizontally -->
         <!-- Reuse classes from your previous templates for consistency -->
+        <!-- Place this above the verification results table -->
+
+        <section id="user-verification" class="container mx-auto mb-10 p-6 bg-white rounded-lg shadow-md dark:bg-gray-800">
+        <label for="states" class="sr-only">选择过滤类型</label>
+        <select id="status-filter" id="states" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-r-lg border-l-gray-100 dark:border-l-gray-700 border-l-2 focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500">
+            <option value="all">显示所有结果</option>
+            <option value="correct">密码正确</option>
+            <option value="incorrect">密码错误</option>
+            <option value="locked">帐号被锁</option>
+            <option value="unknown">未知错误</option>
+        </select>
+    </br>
+        <button id="download-filtered-results" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">下载导出当前筛选结果</button>
+
+        </section>
         <section class="container mx-auto mb-10 p-6 bg-white rounded-lg shadow-md dark:bg-gray-800">
             <h2 class="text-center text-2xl font-bold mb-6">当前帐户下的所有记录</h2>
+
             <div class="relative overflow-x-auto">
-                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                <table id="verification-results-table" class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                         <tr>
                             <th scope="col" class="px-6 py-3">序号</th>
@@ -96,7 +112,37 @@
         </ul>
         </div>
     </footer>
+    <script>
+        // Filtering the results based on the selection
+        document.getElementById('status-filter').addEventListener('change', function() {
+            var filterValue = this.value; // No need to convert to lowercase
+            var statusMap = {
+                "all": "全部结果",
+                "correct": "密码正确",
+                "incorrect": "密码错误",
+                "locked": "帐号被锁",
+                "unknown": "未知错误"
+            };
 
+            var rows = document.querySelectorAll('#verification-results-table tbody tr');
+
+            rows.forEach(function(row) {
+                var statusCellText = row.cells[3].textContent; // Get the status text from the 4th column
+                if (filterValue === 'all' || statusCellText === statusMap[filterValue]) {
+                    row.style.display = ''; // Show the row
+                } else {
+                    row.style.display = 'none'; // Hide the row
+                }
+            });
+        });
+
+
+        // Download the filtered results
+        document.getElementById('download-filtered-results').addEventListener('click', function() {
+            var filterValue = document.getElementById('status-filter').value;
+            window.location.href = '/download_filtered_results?status=' + filterValue; // Assuming '/download_filtered_results' is your Flask route
+        });
+        </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.0.0/flowbite.min.js"></script>
 </body>
 

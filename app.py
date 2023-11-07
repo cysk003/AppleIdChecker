@@ -8,73 +8,14 @@ from apple_id_checker import AppleIDChecker
 import time
 import sqlite3
 from functools import wraps
+import pandas as pd
+from flask import Response
 
 
 # 创建一个 logger
 logger = logging.getLogger(__name__)
 
-
 app = Flask(__name__)
-
-DATABASE = 'verification_results.db'
-
-
-def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-    db.row_factory = sqlite3.Row  # Return rows as dicts instead of tuples
-    return db
-
-
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
-
-
-def init_db():
-    with app.app_context():
-        db = get_db()
-        # Create table (if it doesn't exist already)
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS verification (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                logged_in_user TEXT NOT NULL,
-                apple_id TEXT NOT NULL,
-                password TEXT NOT NULL,
-                verified BOOLEAN NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS user (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                verification_limit INTEGER DEFAULT 10,
-                verification_count INTEGER DEFAULT 0
-            )
-        ''')
-        db.commit()
-
-@app.route('/create_user', methods=['POST'])
-def create_user():
-    username = request.form['username']
-    password = request.form['password']
-    hashed_password = generate_password_hash(password)
-
-    db = get_db()
-    try:
-        db.execute('INSERT INTO user (username, password) VALUES (?, ?)', (username, hashed_password))
-        db.commit()
-    except sqlite3.IntegrityError:  # This will occur if the username is not unique
-        return jsonify({'status': 'error', 'message': 'This username is already taken.'}), 400
-
-    return jsonify({'status': 'success', 'message': 'User created successfully.'})
-
-
 # Configure your secret key and upload folder
 app.secret_key = 'your_secret_key'
 # Make sure this path exists and is writeable
@@ -91,11 +32,76 @@ ALLOWED_EXTENSIONS = {'txt', 'csv'}
 
 def allowed_file(filename):
     return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+DATABASE = 'verification_results.db'
+
+
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row  # Return rows as dicts instead of tuples
+    return db
+
+
+#
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+
+# Decorator for protected routes
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or not session.get('is_admin', False):
+            flash('Admin access required')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def init_db():
+    with app.app_context():
+        db = get_db()
+        # Create table (if it doesn't exist already)
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS verification (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                logged_in_user TEXT NOT NULL,
+                apple_id TEXT NOT NULL,
+                password TEXT NOT NULL,
+                verified TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS user (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                verification_limit INTEGER DEFAULT 10,
+                verification_count INTEGER DEFAULT 0,
+                is_admin BOOLEAN DEFAULT 0
+            )
+        ''')
+        db.commit()
+
 
 # Login route
-
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -110,6 +116,7 @@ def login():
             # Store username in session instead of or along with user_id
             session['username'] = username  # store username here
             session['user_id'] = user['id']
+            session['is_admin'] = user['is_admin']
             # Or whatever the main page route is
             return redirect(url_for('index'))
         else:
@@ -123,22 +130,11 @@ def login():
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
+    session.pop('is_admin', None)
     return redirect(url_for('login'))
 
-# Decorator for protected routes
-
-
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            return redirect(url_for('login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated_function
 
 # Define the route for the main page
-
-
 @app.route('/')
 @login_required
 def index():
@@ -167,7 +163,8 @@ def verify():
     # 获取当前登录用户的用户名
     user_id = session.get('user_id')
     db = get_db()
-    user_row = db.execute('SELECT username FROM user WHERE id = ?', (user_id,)).fetchone()
+    user_row = db.execute(
+        'SELECT username FROM user WHERE id = ?', (user_id,)).fetchone()
     logged_in_user = user_row['username'] if user_row else None
 
     # Get the current user's verification count and limit
@@ -251,7 +248,7 @@ def parse_file(filepath):
                 logger.error(
                     f"Row {row_number} in the file does not have exactly two columns: {row}")
                 results.append({"apple_id": "Error", "password": "Error",
-                               "verified": "Row format error", "row_number": row_number})
+                                "verified": "Row format error", "row_number": row_number})
                 continue  # Skip further processing for this row
 
             # Otherwise, process the row normally
@@ -259,7 +256,7 @@ def parse_file(filepath):
             verified = False  # Replace this with the actual verification once integrated
             # Add the processed data to the results list
             results.append({"apple_id": apple_id, "password": password,
-                           "verified": verified, "row_number": row_number})
+                            "verified": verified, "row_number": row_number})
 
     return results
 
@@ -276,7 +273,7 @@ def batch_verify():
         apple_id = credentials.get('apple_id')
         password = credentials.get('password')
         # Verify the credentials (this should be replaced with actual verification logic)
-        time.sleep(1)  # Add 1 second delay
+        # time.sleep(1)  # Add 1 second delay
         verified = verify_apple_id(apple_id, password)
         results.append(
             {"apple_id": apple_id, "password": password, "verified": verified})
@@ -289,11 +286,13 @@ def batch_verify():
 def my_verification_results():
     user_id = session.get('user_id')
     db = get_db()
-    user_row = db.execute('SELECT username FROM user WHERE id = ?', (user_id,)).fetchone()
+    user_row = db.execute(
+        'SELECT username FROM user WHERE id = ?', (user_id,)).fetchone()
     logged_in_user = user_row['username'] if user_row else None
 
     if logged_in_user:
-        cur = db.execute('SELECT * FROM verification WHERE logged_in_user = ? ORDER BY timestamp DESC', (logged_in_user,))
+        cur = db.execute(
+            'SELECT * FROM verification WHERE logged_in_user = ? ORDER BY timestamp DESC', (logged_in_user,))
         verification_results = cur.fetchall()
         return render_template('my_verification_results.html', verification_results=verification_results)
     else:
@@ -302,7 +301,7 @@ def my_verification_results():
         return redirect(url_for('login'))
 
 
-@app.route('/update_limit', methods=['get'])
+@app.route('/update_limit', methods=['POST'])
 # @login_required
 def update_limit():
     # if not is_admin():  # You need to implement is_admin check according to your app logic
@@ -322,10 +321,119 @@ def update_limit():
     return jsonify({'status': 'success', 'message': 'Limit updated successfully.'})
 
 
-
 @app.route('/disclaimer')
 def disclaimer():
     return render_template('disclaimer.html')
+
+
+@app.route('/admin', methods=['GET'])
+@admin_required
+def admin():
+    db = get_db()
+    users = db.execute(
+        'SELECT id, username, verification_limit, verification_count, is_admin FROM user').fetchall()
+    return render_template('admin.html', users=users)
+
+
+@app.route('/admin/create_user', methods=['POST'])
+@admin_required
+def create_user():
+    username = request.form['username']
+    password = request.form['password']
+    verification_limit = request.form['verification_limit']
+    hashed_password = generate_password_hash(password)
+
+    db = get_db()
+    try:
+        db.execute('INSERT INTO user (username, password, verification_limit) VALUES (?, ?, ?)',
+                   (username, hashed_password, verification_limit))
+        db.commit()
+    except sqlite3.IntegrityError:
+        flash('Username already exists.')
+        return redirect(url_for('admin'))
+
+    flash('User created successfully.')
+    return redirect(url_for('admin'))
+
+
+@app.route('/admin/update_user/<int:user_id>', methods=['POST'])
+@admin_required
+def update_user(user_id):
+    verification_limit = request.form['verification_limit']
+    db = get_db()
+    db.execute('UPDATE user SET verification_limit = ? WHERE id = ?',
+               (verification_limit, user_id))
+    db.commit()
+    flash('User updated successfully.')
+    return redirect(url_for('admin'))
+
+
+@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
+@admin_required
+def delete_user(user_id):
+    db = get_db()
+    db.execute('DELETE FROM user WHERE id = ?', (user_id,))
+    db.commit()
+    flash('User deleted successfully.')
+    return redirect(url_for('admin'))
+
+
+@app.route('/admin/user_list', methods=['GET'])
+@admin_required
+def admin_user_list():
+    db = get_db()
+    users = db.execute('SELECT * FROM user').fetchall()
+    return jsonify([{
+        'id': user['id'],
+        'username': user['username'],
+        'verification_limit': user['verification_limit'],
+        'verification_count': user['verification_count'],
+        'is_admin': user['is_admin']
+    } for user in users])
+
+
+
+
+@app.route('/download_filtered_results')
+@login_required
+def download_filtered_results():
+    # Mapping from the English filter parameters to the Chinese status messages stored in the database
+    status_map = {
+        'unknown': '未知错误',
+        'locked': '帐号被锁',
+        'correct': '密码正确',
+        'incorrect': '密码错误'
+    }
+
+    status_filter = request.args.get('status', 'all')
+    # Translate the filter parameter to the corresponding Chinese status message
+    status_filter_chinese = status_map.get(status_filter, None)
+
+    # Fetch your data from database or wherever it's stored
+    db = get_db()
+    query = 'SELECT id, apple_id, password, verified FROM verification'  # Specify columns explicitly
+    params = []
+    if status_filter_chinese and status_filter != 'all':
+        query += ' WHERE verified = ?'
+        params.append(status_filter_chinese)
+    data = db.execute(query, params).fetchall() if params else db.execute(query).fetchall()
+
+    # Convert the SQL data to a Pandas DataFrame
+    df = pd.DataFrame(data, columns=['id', 'apple_id', 'password', 'verified'])  # Update with your actual columns
+
+    # Convert DataFrame to CSV
+    csv_data = df.to_csv(index=False)
+
+    # Create a generator to stream the CSV data
+    def generate():
+        yield csv_data
+
+    # Create a response object with the CSV generator
+    response = Response(generate(), mimetype='text/csv')
+    response.headers.set('Content-Disposition', 'attachment', filename='filtered_results.csv')
+    return response
+
+
 
 if __name__ == '__main__':
     init_db()

