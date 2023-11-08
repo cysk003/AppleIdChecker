@@ -1,4 +1,4 @@
-![Logo](/static/AppleComputerRainbow.svg)
+<img src="/static/AppleComputerRainbow.svg" alt="Logo" width="30%"/>
 
 # Apple ID Verification System
 
