@@ -1,3 +1,5 @@
+![Logo](/static/AppleComputerRainbow.svg)
+
 # Apple ID 验证系统
 
 本项目提供一个用于检验 Apple ID 有效性的网页接口。它使用 Flask 框架来构建一个网页应用程序，允许用户验证他们的凭证、检查验证结果、管理用户账户（管理员用）以及导出结果。
