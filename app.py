@@ -235,24 +235,45 @@ def upload_file():
 
 # Helper function to parse the uploaded file
 
+# def parse_file(filepath):
+#     results = []  # Initialize an empty list for results
+#     with open(filepath, 'r', encoding='utf-8') as file:
+#         # Ensure the delimiter matches the file format
+#         reader = csv.reader(file, delimiter=':')
+#         # Start enumeration at 1 for row numbers
+#         for row_number, row in enumerate(reader, start=1):
+#             if len(row) != 2:  # Check if the row has exactly two columns
+#                 # Log an error or add an error message to the results indicating the problematic row
+#                 logger.error(
+#                     f"Row {row_number} in the file does not have exactly two columns: {row}")
+#                 results.append({"apple_id": "Error", "password": "Error",
+#                                 "verified": "Row format error", "row_number": row_number})
+#                 continue  # Skip further processing for this row
+
+#             # Otherwise, process the row normally
+#             apple_id, password = row
+#             verified = False  # Replace this with the actual verification once integrated
+#             # Add the processed data to the results list
+#             results.append({"apple_id": apple_id, "password": password,
+#                             "verified": verified, "row_number": row_number})
+
+#     return results
 
 def parse_file(filepath):
     results = []  # Initialize an empty list for results
     with open(filepath, 'r', encoding='utf-8') as file:
-        # Ensure the delimiter matches the file format
-        reader = csv.reader(file, delimiter=':')
         # Start enumeration at 1 for row numbers
-        for row_number, row in enumerate(reader, start=1):
-            if len(row) != 2:  # Check if the row has exactly two columns
+        for row_number, line in enumerate(file, start=1):
+            row = line.strip().split('----')  # Split the line using the '----' delimiter
+            if len(row) != 2:  # Check if the split line has exactly two parts
                 # Log an error or add an error message to the results indicating the problematic row
                 logger.error(
-                    f"Row {row_number} in the file does not have exactly two columns: {row}")
+                    f"Row {row_number} in the file does not have exactly two parts: {line}")
                 results.append({"apple_id": "Error", "password": "Error",
                                 "verified": "Row format error", "row_number": row_number})
                 continue  # Skip further processing for this row
 
-            # Otherwise, process the row normally
-            apple_id, password = row
+            apple_id, password = row  # Unpack the split line into apple_id and password variables
             verified = False  # Replace this with the actual verification once integrated
             # Add the processed data to the results list
             results.append({"apple_id": apple_id, "password": password,
@@ -409,14 +430,17 @@ def download_filtered_results():
     # Translate the filter parameter to the corresponding Chinese status message
     status_filter_chinese = status_map.get(status_filter, None)
 
+    # Fetch the currently logged-in user's identifier from the session or other context
+    current_username = session.get('username')  # or however you are storing the logged-in user's ID
     # Fetch your data from database or wherever it's stored
     db = get_db()
-    query = 'SELECT id, apple_id, password, verified FROM verification'  # Specify columns explicitly
-    params = []
+    query = 'SELECT id, apple_id, password, verified FROM verification WHERE logged_in_user = ?'
+    params = [current_username]
+    # Apply status filter if provided
     if status_filter_chinese and status_filter != 'all':
-        query += ' WHERE verified = ?'
+        query += ' AND verified = ?'
         params.append(status_filter_chinese)
-    data = db.execute(query, params).fetchall() if params else db.execute(query).fetchall()
+    data = db.execute(query, params).fetchall()
 
     # Convert the SQL data to a Pandas DataFrame
     df = pd.DataFrame(data, columns=['id', 'apple_id', 'password', 'verified'])  # Update with your actual columns
