@@ -15,8 +15,8 @@ This project provides a web interface for checking the validity of Apple IDs. It
 Clone the repository and install the required Python packages:
 
 ```bash
-git clone https://yourproject/repository
-cd repository
+git clone https://github.com/kangvcar/AppleIdChecker.git
+cd AppleIdChecker
 pip install -r requirements.txt
 ```
 
@@ -27,6 +27,22 @@ Run the Flask application with the following command:
 ```bash
 python app.py
 ```
+
+# Using Docker (recommended)
+
+1. Build the Docker image:
+
+```bash
+docker build -t appleid-checker .
+```
+
+2. Run the Docker container:
+
+```bash
+docker run -d -p 5000:5000 appleid-checker
+```
+
+This will start a container in the background, with port 5000 on your local machine mapped to port 5000 on the container running the Flask application.
 
 Access the web application by navigating to `http://localhost:5000` in your web browser.
 
@@ -60,8 +76,8 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 
 ## Contact
 
-- **Project Maintainer:** [Your Name](https://github.com/YourUsername)
-- **Email:** email@example.com
+- **Project Maintainer:** [Kangvcar](https://github.com/kangvcar)
+- **Email:** kangvcar@gmail.com
 
 ## Project Status
 

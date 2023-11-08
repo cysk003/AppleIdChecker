@@ -28,6 +28,22 @@ pip install -r requirements.txt
 python app.py
 ```
 
+# 使用 Docker （推荐）
+
+1. 构建 Docker 镜像:
+
+```bash
+docker build -t appleid-checker .
+```
+
+2. 运行 Docker 容器:
+
+```bash
+docker run -d -p 5000:5000 appleid-checker
+```
+
+这将在后台启动一个容器，并将本地的 5000 端口映射到容器内运行的 Flask 应用程序的 5000 端口。
+
 在您的网页浏览器中导航到 `http://localhost:5000` 以访问网页应用程序。
 
 ## 管理员管理
