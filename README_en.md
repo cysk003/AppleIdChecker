@@ -1,8 +1,20 @@
-<img src="/static/AppleComputerRainbow.svg" alt="Logo" width="30%"/>
+<img src="/static/AppleComputerRainbow.svg" alt="Logo" width="15%"/>
 
 # Apple ID Verification System
 
 This project provides a web interface for checking the validity of Apple IDs. It uses Flask to serve a web application that allows users to verify their credentials, check verification results, manage user accounts (for admins), and export results.
+
+Online Access: [http://8.134.157.203:5001](http://8.134.157.203:5001)
+
+<img src="/static/screenshot_home.jpg" width="30%" />
+
+<details>
+<summary>Screenshots</summary>
+<p float="left">
+  <img src="/static/screenshot_data.jpg" width="30%" />
+  <img src="/static/screenshot_admin.jpg" width="30%" />
+</p>
+</details>
 
 ## Features
 
