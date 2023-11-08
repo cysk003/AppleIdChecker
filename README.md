@@ -7,13 +7,13 @@
 
 在线访问：[http://8.134.157.203:5001](http://8.134.157.203:5001)
 
-<img src="/static/screenshot_home.jpg" width="30%" />
+<img src="/static/screenshot_home.jpeg" width="60%" />
 
 <details>
 <summary>Screenshots</summary>
 <p float="left">
-  <img src="/static/screenshot_data.jpg" width="30%" />
-  <img src="/static/screenshot_admin.jpg" width="30%" />
+  <img src="/static/screenshot_data.jpg" width="50%" />
+  <img src="/static/screenshot_admin.jpg" width="50%" />
 </p>
 </details>
 
