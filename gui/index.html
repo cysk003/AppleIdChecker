@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 引入Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>GUI Layout with Tailwind CSS</title>
+</head>
+
+<body class="bg-gray-100 p-4">
+    <div class="container mx-auto">
+        <!-- 指示灯区域 -->
+        <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+            <!-- 指示灯方块组一 -->
+            <div class="flex justify-center space-x-4 mb-4">
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-green-500 rounded"></div>
+                    <span class="text-sm text-green-500 mt-2">密码正确</span>
+                    <span class="text-sm text-green-500" id="correct-count">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-red-500 rounded"></div>
+                    <span class="text-sm text-red-500 mt-2">密码错误</span>
+                    <span class="text-sm text-red-500" id="incorrect-count">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-yellow-500 rounded"></div>
+                    <span class="text-sm text-yellow-500 mt-2">账户锁定</span>
+                    <span class="text-sm text-yellow-500" id="locked-count">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-gray-500 rounded"></div>
+                    <span class="text-sm text-gray-500 mt-2">账户异常</span>
+                    <span class="text-sm text-gray-500" id="exception-count">0</span>
+                </div>
+            </div>
+            <!-- 指示灯方块组二 -->
+            <div class="flex justify-center space-x-4">
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-blue-500 rounded"></div>
+                    <span class="text-sm text-blue-500 mt-2">总ID数</span>
+                    <span class="text-sm text-blue-500" id="total-count">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-blue-700 rounded"></div>
+                    <span class="text-sm text-blue-700 mt-2">已检测</span>
+                    <span class="text-sm text-blue-700" id="detected-count">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-6 h-6 bg-blue-300 rounded"></div>
+                    <span class="text-sm text-blue-300 mt-2">未检测</span>
+                    <span class="text-sm text-blue-300" id="undetected-count">0</span>
+                </div>
+            </div>
+        </div>
+        <!-- 输入区域 -->
+        <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+            <div class="flex items-center mb-6">
+                <!-- Apple数据文件路径输入框 -->
+                <div class="flex-grow pr-2">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="apple-data-file">
+                        Apple数据文件路径
+                    </label>
+                    <input
+                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                        id="fileInput" type="file">
+                </div>
+                <!-- 线程数量设置输入框 -->
+                <div class="flex-grow pl-2">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="thread-count">
+                        线程数量
+                    </label>
+                    <input
+                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                        id="thread-count" type="number" min="1" placeholder="输入线程数量">
+                </div>
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="api-address">
+                    代理API地址
+                </label>
+                <input
+                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
+                    id="api-address" type="text" placeholder="http://api.example.com">
+            </div>
+        </div>
+        <!-- 控制按钮区域 -->
+        <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4 text-center">
+            <button
+                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-4"
+                type="button" onclick="setProxyAPI()">
+                设置代理API
+            </button>
+            <button
+                class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                type="button" onclick="startCheck()" id="startBtn">
+                开始检测
+            </button>
+            <button
+                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-4"
+                type="button" onclick="stopCheck()" id="stopBtn">
+                停止检测
+            </button>
+        </div>
+    </div>
+    <script>
+        // Reference to the file input element
+        var fileInput = document.getElementById('fileInput');
+        var startBtn = document.getElementById('startBtn');
+        var stopBtn = document.getElementById('stopBtn');
+
+        // Flag to control the checking process
+        var isChecking = false;
+
+        // Function to handle the start of the checking process
+        // Ensure the window.pywebview.api object is used correctly
+        function startCheck() {
+            var threadCountInput = document.getElementById('thread-count');
+            var threadCount = parseInt(threadCountInput.value, 10) || 1;  // 如果没有输入，默认为1
+
+            if (isChecking) {
+                console.log("A check is already in progress.");
+                return; // 如果当前已有检测在进行，则不再开始新的检测
+            }
+
+            if (fileInput.files.length > 0) {
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    var contents = e.target.result;
+                    isChecking = true;
+                    stopBtn.disabled = false;
+                    startBtn.disabled = true;
+
+                    // 调用Python的check_apple_ids方法并传递文件内容和线程数量
+                    window.pywebview.api.check_apple_ids(contents, threadCount);
+                };
+                reader.readAsText(fileInput.files[0]);
+            } else {
+                alert('Please select a file to check.');
+            }
+        }
+
+        // Function to handle the stop of the checking process
+        function stopCheck() {
+            isChecking = false;
+            stopBtn.disabled = true;
+            startBtn.disabled = false;
+            // Send a stop signal to the Python backend
+            window.pywebview.api.stop_checking();
+        }
+
+        // 添加设置代理API的函数
+        function setProxyAPI() {
+            var apiAddressInput = document.getElementById('api-address');
+            var proxyApi = apiAddressInput.value;
+
+            if (!proxyApi) {
+                alert('请输入代理API地址。');
+                return;
+            }
+
+            // 调用后端API来更新代理地址
+            window.pywebview.api.set_proxy_api(proxyApi);
+            alert('代理API地址已更新。');
+        }
+
+        // Attach event listeners to buttons
+        startBtn.addEventListener('click', startCheck);
+        stopBtn.addEventListener('click', stopCheck);
+    </script>
+</body>
+
+</html>
