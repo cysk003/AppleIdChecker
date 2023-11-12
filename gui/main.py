@@ -5,7 +5,8 @@ import queue
 import concurrent.futures
 import logging
 from apple_id_checker import AppleIDChecker
-
+from threading import Lock, Event
+from concurrent.futures import ThreadPoolExecutor
 # 配置日志记录
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,68 +17,50 @@ NUM_PROXIES_TO_FETCH = 200  # 每次API调用最多获取的代理数
 
 # 代理队列全局变量
 proxy_queue = queue.Queue()
-
-# Your AppleIDChecker class goes here (with necessary modifications if any)
-
-
-# 获取代理的函数
-# def fetch_proxies(num_proxies):
-#     response = requests.get(PROXY_API_URL)
-#     if response.ok:
-#         # 根据实际响应格式拆分代理字符串
-#         return response.text.strip().split('\n')
-#     else:
-#         logger.error("Failed to retrieve proxies: %s", response.status_code)
-#         return []
+proxy_queue_lock = Lock()  # A lock to ensure thread-safe operations on the proxy queue
+stop_event = Event()  # An event to signal the threads to stop
 
 
-# 初始化代理队列的函数
-# def initialize_proxy_queue(num_proxies):
-#     proxies = fetch_proxies(num_proxies)
-#     for proxy in proxies:
-#         proxy_queue.put(proxy)
+def fetch_and_replenish_proxy_queue_thread_safe(num_proxies):
+    with proxy_queue_lock:  # Ensure that only one thread can replenish the queue at a time
+        fetch_and_replenish_proxy_queue(num_proxies)
+
+# 获取代理IP并填充队列的函数
+
+
+def fetch_and_replenish_proxy_queue(num_proxies):
+    # 获取代理列表，并且填充到队列中
+        response = requests.get(PROXY_API_URL)
+        proxies = response.text.strip().split('\n')
+        for proxy in proxies:
+            proxy_queue.put(proxy)
 
 
 # 使用提供的代理检查Apple ID的函数
 def check_apple_id(apple_id, password):
-
-    checker = AppleIDChecker()  # 假设您已定义了这个类及其try_login方法
+    # Assuming the AppleIDChecker class and its try_login method are correctly defined
+    checker = AppleIDChecker()
     proxy = None
-    while True:
+    while not stop_event.is_set():  # Check if the event is set before each operation
         try:
-            if proxy_queue.empty():  # 如果队列为空，则重新获取代理
-                # 当队列为空时，获取新的代理IP
-                logger.info("队列为空，正在获取新的代理IP...")
-                fetch_and_replenish_proxy_queue(NUM_PROXIES_TO_FETCH)
+            if proxy_queue.empty():  # If the queue is empty, fetch new proxies
+                logger.info("Queue is empty, fetching new proxies...")
+                fetch_and_replenish_proxy_queue_thread_safe(
+                    NUM_PROXIES_TO_FETCH)
 
-            proxy = proxy_queue.get(timeout=5)  # 设置超时时间为5秒，避免无限等待
+            proxy = proxy_queue.get(timeout=5)  # Get a proxy with a timeout
             result = checker.try_login(apple_id, password, proxy)
-            # 处理结果，例如记录日志或更新UI
-            return result
+            return result  # This will exit only the current thread
         except queue.Empty:
-            # 如果队列仍然为空，则说明没有可用的代理IP，因此停止检查
-            logger.error("队列为空，没有可用的代理IP，停止检查。")
+            logger.error(
+                "Queue is empty, no available proxy IPs, stopping check.")
             break
         except Exception as e:
             logger.error(f"Error for {apple_id}: {e}")
-            result = {"status": "未知错误", "message": "出现未知错误。"}
-        finally:
-            print(
-                f"Thread {threading.current_thread().name} finished checking {apple_id}")
+            # Consider if you want to re-raise the exception or handle it differently
 
-
-# 获取代理IP并填充队列的函数
-def fetch_and_replenish_proxy_queue(num_proxies):
-    # 获取代理列表，并且填充到队列中
-    # 注意：这个操作需要线程安全，特别是当多个线程可能同时尝试填充队列时
-    proxies = Api().fetch_proxies(num_proxies)
-    for proxy in proxies:
-        proxy_queue.put(proxy)
-
-
-def stop_checking():
-    # 这里应该是停止检测的逻辑，但是您需要决定如何安全地中断检测过程
-    pass
+    logger.info(
+        f"Thread {threading.current_thread().name} received stop signal for {apple_id}")
 
 
 # Define a global variable to hold the window reference
@@ -134,7 +117,7 @@ class Api:
         # 使用线程池执行并发检查
         results = {"correct": 0, "incorrect": 0, "locked": 0, "exception": 0,
                    "total": len(apple_ids), "detected": 0, "undetected": 0}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        with ThreadPoolExecutor(max_workers=20) as executor:
             futures_to_apple_id = {executor.submit(
                 check_apple_id, apple_id, password): apple_id for apple_id, password in apple_ids}
 
@@ -167,6 +150,12 @@ class Api:
                         f'Apple ID check for {apple_id} generated an exception: {exc}')
 
         self.is_checking = False  # 重置检查标志
+
+# 安全地在主线程中更新UI的函数
+
+
+def stop_checking():
+    stop_event.set()  # Signal all threads to stop
 
 # 安全地在主线程中更新UI的函数
 
