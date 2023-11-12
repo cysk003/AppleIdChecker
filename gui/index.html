@@ -83,11 +83,16 @@
                 </label>
                 <input
                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-0 leading-tight focus:outline-none focus:shadow-outline"
-                    id="api-address" type="text" placeholder="http://api.example.com">
+                    id="api-address" type="text" placeholder="http://api.example.com(该软件已设置默认代理IP接口)">
             </div>
         </div>
         <!-- 控制按钮区域 -->
         <div class="bg-white shadow-md rounded px-4 pt-0 pb-4 mb-4 text-center">
+            <button
+                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-4"
+                id="downloadBtn" onclick="downloadResults()">
+                下载检测结果
+            </button>
             <button
                 class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-4"
                 type="button" onclick="setProxyAPI()">
@@ -165,6 +170,19 @@
             window.pywebview.api.set_proxy_api(proxyApi);
             alert('代理API地址已更新。');
         }
+        // Function to download results
+        function downloadResults() {
+            window.pywebview.api.get_results_file_path().then(function(filePath) {
+                if (filePath) {
+                    window.pywebview.api.download_file();  // 后端方法来触发文件下载
+                } else {
+                    alert('检测结果文件未找到，请先执行检测。');
+                }
+            }).catch(function(error) {
+                alert('获取结果文件路径时出错：' + error);
+            });
+        }
+
 
         // Attach event listeners to buttons
         startBtn.addEventListener('click', startCheck);
