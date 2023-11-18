@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # 定义常量：代理API的URL和每次获取代理的数量
 PROXY_API_URL = 'https://api.hailiangip.com:8522/api/getIp?type=1&num=200&pid=-1&unbindTime=180&cid=-1&orderId=O23110722352356692123&time=1699738697&sign=4bc1e1ba75c91b0da7d6328552104498&noDuplicate=1&dataType=1&lineSeparator=0'
-NUM_PROXIES_TO_FETCH = 200
+NUM_PROXIES_TO_FETCH = 300
 
 # 初始化代理队列和线程同步对象
 proxy_queue = queue.Queue()
@@ -66,19 +66,35 @@ def fetch_and_replenish_proxy_queue():
 # 用于文件写入的全局锁
 write_results_lock = threading.Lock()
 
+# 初始化结果文件路径变量
+result_file_path_correct = None
+result_file_path_2fa = None
 
 # 定义写入检测结果到文件的函数
 def write_result_to_file(apple_id, password, status):
-    global result_file_path
-    if result_file_path is None:  # 如果还没有结果文件，创建一个临时文件用于存储结果
-        temp_file = tempfile.NamedTemporaryFile(
-            delete=False, mode='w', suffix='.txt', prefix='results_', dir='.')
-        result_file_path = temp_file.name  # 保存文件路径
-        temp_file.close()
+    global result_file_path_correct, result_file_path_2fa
 
-    with write_results_lock:  # 获取锁来确保写入操作的线程安全
-        with open(result_file_path, 'a') as file:  # 以追加模式打开文件
-            file.write(f"{apple_id}----{password}---{status}\n")  # 写入一行结果
+    if status == "密码正确":
+        if result_file_path_correct is None:
+            temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', prefix='results_correct_', dir='.')
+            result_file_path_correct = temp_file.name
+            temp_file.close()
+        file_path = result_file_path_correct
+
+    elif status == "双重认证":
+        if result_file_path_2fa is None:
+            temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', prefix='results_2fa_', dir='.')
+            result_file_path_2fa = temp_file.name
+            temp_file.close()
+        file_path = result_file_path_2fa
+
+    else:
+        return
+
+    with write_results_lock:
+        with open(file_path, 'a') as file:
+            file.write(f"{apple_id}----{password}---{status}\n")
+
 
 # 定义使用代理检查Apple ID的函数
 def check_apple_id(apple_id, password):
@@ -129,17 +145,17 @@ class Api:
 
     def get_results_file_path(self):
         # 返回结果文件的路径，如果文件存在
-        global result_file_path
-        return result_file_path if result_file_path and os.path.exists(result_file_path) else ''
+        global result_file_path_correct
+        return result_file_path if result_file_path and os.path.exists(result_file_path_correct) else ''
 
     # 用于响应前端请求，触发保存文件对话框并保存结果文件
     def download_file(self):
-        global result_file_path  # 使用全局变量获取结果文件路径
+        global result_file_path_correct  # 使用全局变量获取结果文件路径
         try:
             # 如果结果文件存在，使用webview弹出保存对话框
             if result_file_path and os.path.exists(result_file_path):
                 save_dialog = webview.windows[0].create_file_dialog(webview.SAVE_DIALOG, directory=os.path.dirname(
-                    result_file_path), save_filename=os.path.basename(result_file_path))
+                    result_file_path), save_filename=os.path.basename(result_file_path_correct))
                 if save_dialog:
                     # 读取临时结果文件并将其内容保存到用户指定的位置
                     with open(result_file_path, 'r') as source, open(save_dialog, 'w') as target:
