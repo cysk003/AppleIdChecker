@@ -254,7 +254,7 @@ def create_webview_window():
     # 创建webview窗口，设置窗口标题、加载的html文件、绑定的js_api对象、窗口大小等属性
     global_window = webview.create_window(
         'Apple ID Checker', 'index.html', js_api=api, width=800, height=500, resizable=False, min_size=(800, 500))
-    webview.start(gui='cef')  # 启动webview，使用CEF作为后端
+    webview.start()  # 启动webview，使用CEF作为后端gui='cef'
 
 
 # 程序入口点
