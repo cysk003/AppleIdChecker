@@ -146,19 +146,19 @@ class Api:
     def get_results_file_path(self):
         # 返回结果文件的路径，如果文件存在
         global result_file_path_correct
-        return result_file_path if result_file_path and os.path.exists(result_file_path_correct) else ''
+        return result_file_path_correct if result_file_path_correct and os.path.exists(result_file_path_correct) else ''
 
     # 用于响应前端请求，触发保存文件对话框并保存结果文件
     def download_file(self):
         global result_file_path_correct  # 使用全局变量获取结果文件路径
         try:
             # 如果结果文件存在，使用webview弹出保存对话框
-            if result_file_path and os.path.exists(result_file_path):
+            if result_file_path_correct and os.path.exists(result_file_path_correct):
                 save_dialog = webview.windows[0].create_file_dialog(webview.SAVE_DIALOG, directory=os.path.dirname(
-                    result_file_path), save_filename=os.path.basename(result_file_path_correct))
+                    result_file_path_correct), save_filename=os.path.basename(result_file_path_correct))
                 if save_dialog:
                     # 读取临时结果文件并将其内容保存到用户指定的位置
-                    with open(result_file_path, 'r') as source, open(save_dialog, 'w') as target:
+                    with open(result_file_path_correct, 'r') as source, open(save_dialog, 'w') as target:
                         target.write(source.read())
                     return 'File saved successfully to ' + save_dialog
                 else:
