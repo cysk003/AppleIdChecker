@@ -29,8 +29,6 @@ proxy_queue = queue.Queue()
 proxy_queue_lock = Lock()
 stop_event = Event()
 
-
-
 # 定义线程安全的代理队列填充函数
 def replenish_proxy_queue_thread_safe(NUM_PROXIES_TO_FETCH):
     # 当代理数量小于200时，重新填充代理队列
