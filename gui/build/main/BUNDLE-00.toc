@@ -1,3 +1,0 @@
-([('main',
-   '/Users/kk/Documents/code/checkAppleID/gui/dist/main',
-   'EXECUTABLE')],)
