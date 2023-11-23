@@ -41,6 +41,7 @@ class Statistics:
     async def increment_total(self):
         async with self.lock:
             self.processed_accounts += 1
+            # self.data["total"] = self.processed_accounts
 
     async def get_stats(self):
         async with self.lock:
@@ -382,7 +383,7 @@ while True:
             continue
         # 标记任务集正在运行
         is_running = True
-        window['-MESSAGES-'].update("正在检测...")
+        window['-MESSAGES-'].update("正在检测...检测结果实时保存到 {folder_name} 目录中")
 
         # 在单独的线程中运行异步任务
         # 创建并启动异步任务
