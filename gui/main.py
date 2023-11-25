@@ -168,13 +168,13 @@ class AppleIDChecker:
             return {"error": "尝试登录时发生HTTP错误。"}
 
     def process_response(self, apple_id, password, response_text):
-        if PASSWORD_CORRECT_MESSAGE in response_text:
+        if 'authType' in response_text:
             logger.info(f'密码正确 AppleID -> {apple_id}:{password}')
             result = {"status": "密码正确", "message": "帐号密码正确。"}
-        elif PASSWORD_INCORRECT_MESSAGE in response_text:
+        elif 'incorrect' in response_text:
             logger.info(f'密码错误 AppleID -> {apple_id}:{password}')
             result = {"status": "密码错误", "message": "帐号密码错误。"}
-        elif CLOSED_ACCOUNT_MESSAGE in response_text:
+        elif 'locked' in response_text:
             logger.info(f'账户已锁定 AppleID -> {apple_id}:{password}')
             result = {"status": "帐号被锁", "message": "此Apple ID因安全原因已被锁定。"}
         else:
@@ -218,4 +218,16 @@ window.close()
 # 5. 但检测发生http错误时，需要更换代理IP并重新检测（把帐号密码对放回队列）。
 # 6. 检测的结果需要在GUI界面中实时显示。需要显示的内容有：总数、正确、双重、被锁、错误的数量。
 # 7. 检测时同步更新进度条。
-# 8. 检测时同步把检测「正确」和「双重」的结果分别写入一个新文件夹下的两个文件中。
+# 8. 每次检测时同步把检测「正确」和「双重」的结果分别写入一个新文件夹（文件夹以年月日时分秒命名）下的两个文件中。
+
+1. 从GUI中获取帐号密码对文件路径、代理IP接口、并发数量。
+2. 解析帐号密码对文件，将帐号密码对放入帐号密码对队列中，同时计算帐号密码对数量为总数。
+3. 从代理IP接口获取代理IP，将代理IP放入代理IP队列中，每个代理IP只能使用一次。
+4. 从帐号密码对队列中取出帐号密码对，从代理IP队列中取出代理IP，使用帐号密码对和代理IP进行检测。
+5. 检测结果为正确时，将帐号密码对写入正确文件中。
+6. 检测结果为双重时，将帐号密码对写入双重文件中。
+7. 检测要求使用asyncio协程异步并发检测帐号密码对。并发数量为并发数量设置。当帐号密码对数量小于并发数量时，使用帐号密码对数量为并发数量。
+8. 检测发生http错误时，将帐号密码对放回帐号密码对队列中，更换代理IP，重新检测。
+9. 检测结果需要在GUI界面中实时显示。需要显示的内容有：总数、正确、双重、被锁、错误的数量。
+10. 检测时同步更新进度条。
+11. 要求优化CPU和内存的使用。
