@@ -7,6 +7,8 @@
 
 😋 在线访问：[http://8.134.157.203:5001](http://8.134.157.203:5001)
 
+🌏 TG交流群：[加入群组](https://t.me/+m7x3s4caiQQ4MmVl)
+
 <img src="/static/screenshot_home.jpeg" width="60%" />
 
 <details>
